@@ -5,6 +5,7 @@ import javax.imageio.metadata.IIOMetadataNode;
 import javax.imageio.stream.ImageOutputStream;
 import java.awt.*;
 import java.awt.image.BufferedImage;
+import java.awt.image.DataBuffer;
 import java.awt.image.IndexColorModel;
 import java.io.*;
 import java.util.Iterator;
@@ -13,8 +14,8 @@ import java.util.Iterator;
 public class Png {
     public static void main(String[] args) throws IOException {
         var a = readImage("g.png");
-        var aa = setDpi(png8(toBinaryImage(a)), 600);
-        writeFile(aa, "g2.png");
+        var aa = setDpi(png8(toBinaryImage(a, Color.WHITE.getRGB(), Color.RED.getRGB())), 600);
+        writeFile(aa, "g3.png");
     }
 
     private static void savePngFile(BufferedImage a, String name) throws IOException {
@@ -144,14 +145,23 @@ public class Png {
 
     // https://stackoverflow.com/questions/9759651/convert-an-image-to-2-colour-in-java/9759712
     public static BufferedImage toBinaryImage(final BufferedImage image) {
-        final BufferedImage blackAndWhiteImage = new BufferedImage(
-                image.getWidth(null),
-                image.getHeight(null),
-                BufferedImage.TYPE_BYTE_BINARY);
-        final Graphics2D g = (Graphics2D) blackAndWhiteImage.getGraphics();
+        return toBinaryImage(image, Color.WHITE.getRGB(), Color.BLACK.getRGB());
+    }
+
+    public static BufferedImage toBinaryImage(final BufferedImage image, int bg, int fg) {
+        int width = image.getWidth(null);
+        int height = image.getHeight(null);
+
+        // https://github.com/haraldk/TwelveMonkeys/blob/master/imageio/imageio-pict/src/main/java/com/twelvemonkeys/imageio/plugins/pict/BitMapPattern.java#L104
+        var cm = new IndexColorModel(1, 2, new int[]{bg, fg}, 0, false, -1, DataBuffer.TYPE_BYTE);
+
+        //  var blackAndWhiteImage = new BufferedImage(width, height, BufferedImage.TYPE_BYTE_BINARY);
+        var redWhiteImage = new BufferedImage(width, height, BufferedImage.TYPE_BYTE_BINARY, cm);
+        var g = (Graphics2D) redWhiteImage.getGraphics();
         g.drawImage(image, 0, 0, null);
         g.dispose();
-        return blackAndWhiteImage;
+
+        return redWhiteImage;
     }
 
 
