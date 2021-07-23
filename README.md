@@ -6,12 +6,15 @@ $ identify -verbose pngs/g*.png | egrep "Colors:|Depth:|Version|Filename:"
   Depth: 8-bit
   Colors: 58
   Filename: pngs/g2.png
-  Depth: 8-bit
+  Depth: 8/1-bit
   Colors: 2
   Filename: pngs/g3.png
   Depth: 8/1-bit
   Colors: 2
-  Version: ImageMagick 7.1.0-2 Q16 x86_64 2021-06-25 https://imagemagick.org
+  Filename: pngs/g4.png
+  Depth: 8-bit
+  Colors: 2
+  Version: ImageMagick 7.1.0-4 Q16 x86_64 2021-07-18 https://imagemagick.org
 ```
 
 ![img1](pngs/img.png)

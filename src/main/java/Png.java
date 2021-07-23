@@ -1,13 +1,17 @@
-import javax.imageio.*;
+import javax.imageio.IIOImage;
+import javax.imageio.ImageIO;
+import javax.imageio.ImageTypeSpecifier;
 import javax.imageio.metadata.IIOInvalidTreeException;
 import javax.imageio.metadata.IIOMetadata;
 import javax.imageio.metadata.IIOMetadataNode;
 import java.awt.*;
 import java.awt.image.BufferedImage;
+import java.awt.image.ColorConvertOp;
 import java.awt.image.DataBuffer;
 import java.awt.image.IndexColorModel;
 import java.io.*;
 
+import static java.awt.Color.*;
 import static javax.imageio.ImageIO.createImageOutputStream;
 import static javax.imageio.ImageIO.getImageWritersByFormatName;
 import static javax.imageio.ImageTypeSpecifier.createFromBufferedImageType;
@@ -15,13 +19,14 @@ import static javax.imageio.ImageTypeSpecifier.createFromBufferedImageType;
 
 public class Png {
     public static void main(String[] args) throws IOException {
-        var a = color2(of("pngs/g.png"), Color.WHITE.getRGB(), Color.RED.getRGB());
-        save(setDpi(a, 600), "pngs/g3.png");
+        save(setDpi(color2(of("pngs/g.png")), 600), "pngs/g2.png");
+        save(setDpi(color2(of("pngs/g.png"), WHITE.getRGB(), RED.getRGB()), 600), "pngs/g3.png");
+        save(setDpi(convert8(color2(of("pngs/g.png"), WHITE.getRGB(), RED.getRGB())), 600), "pngs/g4.png");
     }
 
     // https://stackoverflow.com/questions/9759651/convert-an-image-to-2-colour-in-java/9759712
     public static BufferedImage color2(final BufferedImage image) {
-        return color2(image, Color.WHITE.getRGB(), Color.BLACK.getRGB());
+        return color2(image, WHITE.getRGB(), BLACK.getRGB());
     }
 
     public static BufferedImage color2(final BufferedImage image, int bg, int fg) {
@@ -40,6 +45,22 @@ public class Png {
         return redWhiteImage;
     }
 
+    /**
+     * Converts the source image to 8-bit colour
+     * using the default 256-colour palette. No transparency.
+     * https://github.com/imcdonagh/image4j/blob/master/src/net/sf/image4j/util/ConvertUtil.java
+     *
+     * @param src the source image to convert
+     * @return a copy of the source image with an 8-bit colour depth
+     */
+    public static BufferedImage convert8(BufferedImage src) {
+        var dest = new BufferedImage(src.getWidth(), src.getHeight(), BufferedImage.TYPE_BYTE_INDEXED);
+        var cco = new ColorConvertOp(src.getColorModel().getColorSpace(), dest.getColorModel().getColorSpace(), null);
+        cco.filter(src, dest);
+        return dest;
+    }
+
+    // https://stackoverflow.com/questions/6832434/png-is-it-possible-to-reduce-the-palette-using-java-2d
     public static BufferedImage color8(BufferedImage src) {
         // here goes custom palette
         var cm = new IndexColorModel(
