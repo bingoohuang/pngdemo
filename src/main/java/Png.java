@@ -2,60 +2,79 @@ import javax.imageio.*;
 import javax.imageio.metadata.IIOInvalidTreeException;
 import javax.imageio.metadata.IIOMetadata;
 import javax.imageio.metadata.IIOMetadataNode;
-import javax.imageio.stream.ImageOutputStream;
 import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.awt.image.DataBuffer;
 import java.awt.image.IndexColorModel;
 import java.io.*;
-import java.util.Iterator;
+
+import static javax.imageio.ImageIO.createImageOutputStream;
+import static javax.imageio.ImageIO.getImageWritersByFormatName;
+import static javax.imageio.ImageTypeSpecifier.createFromBufferedImageType;
 
 
 public class Png {
     public static void main(String[] args) throws IOException {
-        var a = readImage("g.png");
-        var aa = setDpi(png8(toBinaryImage(a, Color.WHITE.getRGB(), Color.RED.getRGB())), 600);
-        writeFile(aa, "g3.png");
+        var a = color2(of("pngs/g.png"), Color.WHITE.getRGB(), Color.RED.getRGB());
+        save(setDpi(a, 600), "pngs/g3.png");
     }
 
-    private static void savePngFile(BufferedImage a, String name) throws IOException {
-        ImageIO.write(a, "png", new File(name));
+    // https://stackoverflow.com/questions/9759651/convert-an-image-to-2-colour-in-java/9759712
+    public static BufferedImage color2(final BufferedImage image) {
+        return color2(image, Color.WHITE.getRGB(), Color.BLACK.getRGB());
     }
 
-    public static BufferedImage png8(BufferedImage src) throws IOException {
+    public static BufferedImage color2(final BufferedImage image, int bg, int fg) {
+        int w = image.getWidth();
+        int h = image.getHeight();
+
+        // https://github.com/haraldk/TwelveMonkeys/blob/master/imageio/imageio-pict/src/main/java/com/twelvemonkeys/imageio/plugins/pict/BitMapPattern.java#L104
+        var cm = new IndexColorModel(1, 2, new int[]{bg, fg}, 0, false, -1, DataBuffer.TYPE_BYTE);
+
+        //  var blackAndWhiteImage = new BufferedImage(w, h, BufferedImage.TYPE_BYTE_BINARY);
+        var redWhiteImage = new BufferedImage(w, h, BufferedImage.TYPE_BYTE_BINARY, cm);
+        var g = (Graphics2D) redWhiteImage.getGraphics();
+        g.drawImage(image, 0, 0, null);
+        g.dispose();
+
+        return redWhiteImage;
+    }
+
+    public static BufferedImage color8(BufferedImage src) {
         // here goes custom palette
-        IndexColorModel cm = new IndexColorModel(
+        var cm = new IndexColorModel(
                 3, // 3 bits can store up to 8 colors
                 6, // here I use only 6
-                //          RED  GREEN1 GREEN2  BLUE  WHITE BLACK
-                new byte[]{-100, 0, 0, 0, -1, 0},
-                new byte[]{0, -100, 60, 0, -1, 0},
-                new byte[]{0, 0, 0, -100, -1, 0});
+                // RED  GREEN1 GREEN2  BLUE  WHITE BLACK
+                new byte[]{-100, 0, 0, 0, -1, 0}, new byte[]{0, -100, 60, 0, -1, 0}, new byte[]{0, 0, 0, -100, -1, 0});
 
         // draw source image on new one, with custom palette
-        BufferedImage img = new BufferedImage(
-                src.getWidth(), src.getHeight(), // match source
+        var img = new BufferedImage(src.getWidth(), src.getHeight(), // match source
                 BufferedImage.TYPE_BYTE_INDEXED, // required to work
                 cm); // custom color model (i.e. palette)
-        Graphics2D g2 = img.createGraphics();
+        var g2 = img.createGraphics();
         g2.drawImage(src, 0, 0, null);
         g2.dispose();
 
         return img;   // 2,5 kb
     }
 
-    private static void writeFile(byte[] aa, String filename) throws IOException {
+
+    private static void savePng(BufferedImage a, String name) throws IOException {
+        ImageIO.write(a, "png", new File(name));
+    }
+
+    private static void save(byte[] aa, String filename) throws IOException {
         try (var os = new FileOutputStream(filename)) {
             os.write(aa);
         }
     }
 
-    private static BufferedImage createImageFromBytes(byte[] imageData) throws IOException {
-        var bais = new ByteArrayInputStream(imageData);
-        return ImageIO.read(bais);
+    private static BufferedImage of(byte[] imageData) throws IOException {
+        return ImageIO.read(new ByteArrayInputStream(imageData));
     }
 
-    public static BufferedImage readImage(String imagePath) throws IOException {
+    public static BufferedImage of(String imagePath) throws IOException {
         return ImageIO.read(new File(imagePath));
     }
 
@@ -73,7 +92,6 @@ public class Png {
         double dotsPerMilli = 1.0 * dpi / 10 / INCH_2_CM;
         var horiz = new IIOMetadataNode("HorizontalPixelSize");
         horiz.setAttribute("value", Double.toString(dotsPerMilli));
-
         var vert = new IIOMetadataNode("VerticalPixelSize");
         vert.setAttribute("value", Double.toString(dotsPerMilli));
 
@@ -83,19 +101,47 @@ public class Png {
 
         var root = new IIOMetadataNode("javax_imageio_1.0");
         root.appendChild(dim);
-
         metadata.mergeTree("javax_imageio_1.0", root);
     }
 
+
+    /**
+     * 处理图片，设置图片DPI值
+     * https://convert-dpi.com/
+     */
+    public static byte[] setDpi(BufferedImage image, int dpi) throws IOException {
+        for (var iw = getImageWritersByFormatName("png"); iw.hasNext(); ) {
+            var writer = iw.next();
+            var param = writer.getDefaultWriteParam();
+            var typeSpecifier = createFromBufferedImageType(BufferedImage.TYPE_INT_RGB);
+            var meta = writer.getDefaultImageMetadata(typeSpecifier, param);
+            if (meta.isReadOnly() || !meta.isStandardMetadataFormatSupported()) {
+                continue;
+            }
+
+            setDPI(meta, dpi);
+
+            var output = new ByteArrayOutputStream();
+            try (var stream = createImageOutputStream(output);) {
+                writer.setOutput(stream);
+                writer.write(meta, new IIOImage(image, null, meta), param);
+            }
+            return output.toByteArray();
+        }
+
+        return null;
+    }
+
+
     // https://groups.google.com/g/comp.lang.java.programmer/c/1XFhLEgILJc
-    static BufferedImage writePngFile(BufferedImage image, int dotsPerInch) throws IOException {
+    static byte[] setDpi2(BufferedImage image, int dotsPerInch) throws IOException {
         var dotsPerMeter = String.valueOf((int) (dotsPerInch / 0.0254));
 
         // retrieve list of ImageWriters for png images (most likely only*/one but who knows)
-        var imageWriters = ImageIO.getImageWritersByFormatName("png");
+        var imageWriters = getImageWritersByFormatName("png");
 
         // loop through available ImageWriters until one succeeds
-        while (imageWriters.hasNext()) {
+        if (imageWriters.hasNext()) {
             var iw = imageWriters.next();
 
             // get default metadata for png files
@@ -109,10 +155,11 @@ public class Png {
             // find pHYs node, or create it if it doesn't exist
             IIOMetadataNode physNode;
             var childNodes = pngNode.getElementsByTagName("pHYs");
-            if (childNodes.getLength() == 0) {
+            int childNodesLength = childNodes.getLength();
+            if (childNodesLength == 0) {
                 physNode = new IIOMetadataNode("pHYs");
                 pngNode.appendChild(physNode);
-            } else if (childNodes.getLength() == 1) {
+            } else if (childNodesLength == 1) {
                 physNode = (IIOMetadataNode) childNodes.item(0);
             } else {
                 throw new IllegalStateException("Don't know what to do with multiple pHYs nodes");
@@ -122,80 +169,18 @@ public class Png {
             physNode.setAttribute("pixelsPerUnitYAxis", dotsPerMeter);
             physNode.setAttribute("unitSpecifier", "meter");
 
-            ByteArrayOutputStream output = new ByteArrayOutputStream();
-
-            try {
+            var output = new ByteArrayOutputStream();
+            try (var ios = createImageOutputStream(output)) {
                 metadata.setFromTree(pngFormatName, pngNode);
-                IIOImage iioImage = new IIOImage(image, null, metadata);
-                var ios = ImageIO.createImageOutputStream(output);
                 iw.setOutput(ios);
-                iw.write(iioImage);
-                ios.flush();
-                ios.close();
-            } catch (Exception e) {
-                e.printStackTrace();
-                continue;
-            }
-            return ImageIO.read(new ByteArrayInputStream(output.toByteArray()));
-        }
-
-
-        return null;
-    }
-
-    // https://stackoverflow.com/questions/9759651/convert-an-image-to-2-colour-in-java/9759712
-    public static BufferedImage toBinaryImage(final BufferedImage image) {
-        return toBinaryImage(image, Color.WHITE.getRGB(), Color.BLACK.getRGB());
-    }
-
-    public static BufferedImage toBinaryImage(final BufferedImage image, int bg, int fg) {
-        int width = image.getWidth(null);
-        int height = image.getHeight(null);
-
-        // https://github.com/haraldk/TwelveMonkeys/blob/master/imageio/imageio-pict/src/main/java/com/twelvemonkeys/imageio/plugins/pict/BitMapPattern.java#L104
-        var cm = new IndexColorModel(1, 2, new int[]{bg, fg}, 0, false, -1, DataBuffer.TYPE_BYTE);
-
-        //  var blackAndWhiteImage = new BufferedImage(width, height, BufferedImage.TYPE_BYTE_BINARY);
-        var redWhiteImage = new BufferedImage(width, height, BufferedImage.TYPE_BYTE_BINARY, cm);
-        var g = (Graphics2D) redWhiteImage.getGraphics();
-        g.drawImage(image, 0, 0, null);
-        g.dispose();
-
-        return redWhiteImage;
-    }
-
-
-    /**
-     * 处理图片，设置图片DPI值
-     * https://convert-dpi.com/
-     */
-    public static byte[] setDpi(BufferedImage image, int dpi) throws IOException {
-        for (Iterator<ImageWriter> iw = ImageIO.getImageWritersByFormatName("png"); iw.hasNext(); ) {
-            ImageWriter writer = iw.next();
-            ImageWriteParam writeParam = writer.getDefaultWriteParam();
-            ImageTypeSpecifier typeSpecifier = ImageTypeSpecifier.createFromBufferedImageType(BufferedImage.TYPE_INT_RGB);
-            IIOMetadata metadata = writer.getDefaultImageMetadata(typeSpecifier, writeParam);
-            if (metadata.isReadOnly() || !metadata.isStandardMetadataFormatSupported()) {
-                continue;
-            }
-            ByteArrayOutputStream output = new ByteArrayOutputStream();
-            ImageOutputStream stream = null;
-            try {
-                setDPI(metadata, dpi);
-                stream = ImageIO.createImageOutputStream(output);
-                writer.setOutput(stream);
-                writer.write(metadata, new IIOImage(image, null, metadata), writeParam);
-            } finally {
-                try {
-                    stream.close();
-                } catch (IOException e) {
-                }
+                iw.write(new IIOImage(image, null, metadata));
             }
             return output.toByteArray();
         }
 
         return null;
     }
+
 }
 
 // 代码来源：https://www.cnblogs.com/fanblogs/p/11268660.html
